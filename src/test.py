@@ -5,7 +5,6 @@ from preparable import Preparer, Preparable
 
 
 def debug(*args):
-  return
   print " ".join(map(str, args))
 
 def f(x):
@@ -19,7 +18,8 @@ def multi_step_function(first_arg):
   second_arg = yield {
     "func" : f,
     "args" : [first_arg],
-    "kwargs" : {}
+    "kwargs" : {},
+    "cache_key" : "one"
   }
 
   debug("a step 1 received", second_arg)
@@ -31,7 +31,7 @@ def multi_step_function(first_arg):
   debug("a step 2 received", third_arg)
 
 def top_level():
-  print "TOP LEVEL"
+  debug("top level")
   return "foo"
 
 def multi_step_two():
@@ -46,7 +46,8 @@ def multi_step_three():
 
   first_arg = yield {
     "func" : some_work,
-    "args" : ["foo"]
+    "args" : ["foo"],
+    "cache_key" : "one"
   }
   debug("b step 1")
 
@@ -73,4 +74,7 @@ if __name__ == "__main__":
 
   prep.run()
 
-  print "ALL FUNCTIONS FINISHED"
+  print "\n\n"
+  print "Finished preparing data!"
+  print "Cached data:", prep.cache
+  print "Preparables run", len(prep.preparables)

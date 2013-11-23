@@ -1,48 +1,14 @@
 import time
 import pickle_methods
 import multiprocessing
-from multiprocessing.pool import Pool
+from collections import defaultdict
 
-multiprocessing.log_to_stderr()
 
+from logging_pool import LoggingPool
 DEBUG = False
 def debug(*args):
   if DEBUG:
     print " ".join(map(str, args))
-
-# Pulled from somewhere
-import traceback
-import multiprocessing
-
-# Shortcut to multiprocessing's logger
-def error(msg, *args):
-    return multiprocessing.get_logger().error(msg, *args)
-
-class LogExceptions(object):
-    def __init__(self, callable):
-        self.__callable = callable
-        return
-
-    def __call__(self, *args, **kwargs):
-        try:
-            result = self.__callable(*args, **kwargs)
-
-        except Exception as e:
-            # Here we add some debugging help. If multiprocessing's
-            # debugging is on, it will arrange to log the traceback
-            error(traceback.format_exc())
-            # Re-raise the original exception so the Pool worker can
-            # clean up
-            raise
-
-        # It was fine, give a normal answer
-        return result
-    pass
-
-class LoggingPool(Pool):
-    def apply_async(self, func, args=(), kwds={}, callback=None):
-        return Pool.apply_async(self, LogExceptions(func), args, kwds, callback)
-
 
 class Preparable(object):
   def __init__(self, multi_func, cache_key=None):
@@ -74,7 +40,7 @@ class Preparable(object):
       except StopIteration, e:
         raise e
       except Exception, e:
-        debug("ERROR WHILE RUNNING GENERATOR", Exception, e)
+        debug("ERROR WHILE RUNNING GENERATOR", e)
         self.generator.throw(e)
         return
 
@@ -91,6 +57,7 @@ class Preparer(object):
     self.done = False
     self.exceptions = []
     self.cache = {}
+    self.caching = defaultdict(list)
 
   def add(self, prepare_cycle, args=[], kwargs={}):
     self.preparables.append((prepare_cycle, args, kwargs))
@@ -106,17 +73,26 @@ class Preparer(object):
       first_func = data.get('func')
       args = data.get('args', [])
       kwargs = data.get('kwargs', {})
+      cache_key = data.get('cache_key')
     elif callable(data):
       first_func = data
       args = []
       kwargs = {}
+      cache_key = None
     else:
       print "Preparable function yielded a non preparable idea"
 
-    return first_func, args, kwargs
+    return first_func, args, kwargs, cache_key
 
   def startup(self):
     self.executing = len(self.preparables)
+
+
+    # This loop has some repeated code because of 
+    # the callback creation inside of it necessary
+    # for closures. Without the closures, the loop
+    # would really only execute teh same thing multiple
+    # times.
     for preparable in self.preparables:
       debug("RUNNING PREPARABLE", preparable)
       prepare_cycle, args, kwargs = preparable
@@ -128,17 +104,24 @@ class Preparer(object):
 
       res = self.unpack(data)
       if res:
-        first_func, args, kwargs = res
+        first_func, args, kwargs, cache_key = res
       else:
         return
 
-      def make_cb(self, prepare_cycle):
+      def make_cb(self, prepare_cycle, cache_key):
         def cb(x):
-          self.next_func(prepare_cycle, x)
+          self.run_next_func(prepare_cycle, x, cache_key)
 
         return cb
-      result = self.pool.apply_async(first_func, args, kwargs, make_cb(self, prepare_cycle))
-      self.preparing.append(result)
+
+      if cache_key in self.cache:
+        self.run_next_func(prepare_cycle, self.cache[cache_key])
+      elif cache_key in self.caching:
+        self.caching[cache_key].append(prepare_cycle)
+      else:
+        result = self.pool.apply_async(first_func, args, kwargs, make_cb(self, prepare_cycle, cache_key))
+        self.preparing.append(result)
+        self.caching[cache_key] = []
 
     ret = self.spin()
     return ret
@@ -150,9 +133,6 @@ class Preparer(object):
       if self.done:
         break
 
-  def on_done(self, done_func):
-    self.when_done.append(done_func)
-
   def finished_job(self):
     self.executing -= 1
     if self.executing == 0:
@@ -163,21 +143,36 @@ class Preparer(object):
       for done in self.when_done:
         done()
 
-  def next_func(self, prepare_cycle, result):
+  def run_next_func(self, prepare_cycle, result, cache_key=None):
     next_func = None
+    if cache_key:
+      self.cache[cache_key] = result
+
+    if cache_key in self.caching:
+      cached = self.caching[cache_key]
+      del self.caching[cache_key]
+
+      for data in cached:
+        self.run_next_func(prepare_cycle, result)
     try:
       data = prepare_cycle.do_work(result)
       res = self.unpack(data)
       if res:
-        next_func, args, kwargs = res
+        next_func, args, kwargs, cache_key = res
     except StopIteration:
       debug("Finished Execution", prepare_cycle)
       self.finished_job()
       return
 
     if next_func:
-      result = self.pool.apply_async(next_func, args, {}, lambda y: self.next_func(prepare_cycle, y))
-      self.preparing.append(result)
+      if cache_key in self.cache:
+        self.run_next_func(prepare_cycle, self.cache[cache_key])
+      elif cache_key in self.caching:
+        self.caching[cache_key].append((next_func, args, kwargs))
+      else:
+        result = self.pool.apply_async(next_func, args, {}, lambda y: self.run_next_func(prepare_cycle, y, cache_key))
+        self.preparing.append(result)
+        self.caching[cache_key] = []
     else:
       self.finished_job()
 
