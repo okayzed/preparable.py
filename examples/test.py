@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
   prep.run()
 
-  print "\n\n"
+  print "\n"
   print "Finished preparing data!"
   print "Cached data:", prep.cache
   print "Preparables run", len(prep.preparables)
