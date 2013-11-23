@@ -1,9 +1,11 @@
 import time
+import copy_reg
+
 from preparable import Preparer, Preparable
 
 
 def debug(*args):
-#  return
+  return
   print " ".join(map(str, args))
 
 def f(x):
@@ -16,7 +18,7 @@ def multi_step_function(first_arg):
   debug("a step 0", first_arg)
   second_arg = yield {
     "func" : f,
-    "args" : [5],
+    "args" : [first_arg],
     "kwargs" : {}
   }
 
@@ -24,12 +26,17 @@ def multi_step_function(first_arg):
 
   third_arg = yield {
     "func" : x,
-    "args" : [1]
+    "args" : [second_arg]
   }
   debug("a step 2 received", third_arg)
 
+def top_level():
+  print "TOP LEVEL"
+  return "foo"
+
 def multi_step_two():
   debug("c step 0")
+  bar = yield top_level
 
 def some_work(foo):
   debug("d DOING SOME WORK", foo)
@@ -45,33 +52,25 @@ def multi_step_three():
 
 class Stepper(object):
   def __init__(self):
-    pass
+    self.foo = "some data"
 
   def work(self):
     debug("DOING SOME CLASS WORK")
     data = yield { "func": self.other_work }
+    self.foo = data
 
   def other_work(self):
     debug("DOING SOME OTHER CLASS WORK")
     return "OTHER WORK"
 
+
 if __name__ == "__main__":
-  p = Preparable(multi_step_function)
   prep = Preparer()
-  prep.add(Preparable(multi_step_function), [10])
+  prep.add(Preparable(multi_step_function), [3])
   prep.add(Preparable(multi_step_two))
   prep.add(Preparable(multi_step_three))
   prep.add(Preparable(Stepper().work))
 
-  done = False
-  def when_done():
-    debug("FINISHED ALL JOBS")
-    prep.done = True
-
-  prep.on_done(when_done)
   prep.run()
 
-  while True:
-    time.sleep(0.05)
-    if prep.done:
-      break
+  print "ALL FUNCTIONS FINISHED"
