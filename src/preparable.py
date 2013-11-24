@@ -51,6 +51,7 @@ class Preparable(Debuggable):
 
 # The Preparer runs multiple Preparables in Parallel.
 class Preparer(Debuggable):
+  DEBUG=False
   def __init__(self, *args, **kwargs):
     self.pool = LoggingPool(processes=kwargs.get('processes', None)) # Figure it out!
     self.when_done = []
@@ -60,6 +61,9 @@ class Preparer(Debuggable):
     self.exceptions = []
     self.cache = {}
     self.caching = defaultdict(list)
+
+    self.in_progress = set()
+    self.finished = []
 
   def add(self, prepare_cycle, args=[], kwargs={}):
     self.debug("ADDING PREPARABLE", prepare_cycle)
@@ -114,8 +118,10 @@ class Preparer(Debuggable):
       self.debug("RUNNING PREPARABLE", preparable)
       prepare_cycle, args, kwargs = preparable
       data = prepare_cycle.start(*args, **kwargs)
+      self.in_progress.add(prepare_cycle)
       if not data:
         self.debug("Finished Execution Early", hash(prepare_cycle))
+        self.finished.append(prepare_cycle)
         self.finished_job()
         continue
 
@@ -144,15 +150,17 @@ class Preparer(Debuggable):
     return ret
 
   def spin(self):
+    start = time.time()
     while True:
       time.sleep(0.01)
       self.find_exceptions()
-      if self.done:
+      delta = time.time() - start
+      if self.done or not self.preparing:
         break
 
   def finished_job(self):
     self.executing -= 1
-    if self.executing == 0:
+    if self.executing == 0 or not self.preparing:
       self.debug('ALL DONE')
       if not len(self.exceptions):
         self.success = True
@@ -180,6 +188,7 @@ class Preparer(Debuggable):
         next_func, args, kwargs, cache_key = res
     except StopIteration:
       self.debug("Finished Execution", prepare_cycle)
+      self.finished.append(prepare_cycle)
       self.finished_job()
       return
 
@@ -193,6 +202,8 @@ class Preparer(Debuggable):
         self.preparing.append(result)
         self.caching[cache_key] = []
     else:
+      self.finished.append(prepare_cycle)
+      self.in_progress.remove(prepare_cycle)
       self.finished_job()
 
   def print_summary(self):
@@ -200,7 +211,7 @@ class Preparer(Debuggable):
     print "Finished preparing data!"
     print "Cached data:", self.cache
     print "Errors: ", len(self.exceptions)
-    print "Preparables run", len(self.preparables)
+    print "Preparables run", len(self.finished)
     if self.exceptions:
       print "Exceptions", self.exceptions
 
