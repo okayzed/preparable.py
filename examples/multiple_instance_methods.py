@@ -1,4 +1,4 @@
-from src.preparable import Preparer, Preparable
+from src import Preparer, Preparable
 from src import debug
 
 # This shows how an instance method can used

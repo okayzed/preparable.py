@@ -15,7 +15,10 @@ class LogExceptions(object):
 
     def __call__(self, *args, **kwargs):
         try:
-            result = self.__callable(*args, **kwargs)
+            if kwargs:
+              result = self.__callable(*args, **kwargs)
+            else:   
+              result = self.__callable(*args)
 
         except Exception as e:
             # Here we add some debugging help. If multiprocessing's
