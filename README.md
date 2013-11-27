@@ -23,5 +23,4 @@ use module level named functions.
 
 ## What's not Implemented
 
-* Child Preparables
 * Errors (partially implemented, fully undocumented)
