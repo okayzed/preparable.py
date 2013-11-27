@@ -6,10 +6,11 @@ from src import debug
 # to run a preparable in a separate thread.
 
 class FakeFetcher(PrepFetcher):
-  def __init__(self, func, *args, **kwargs):
+  def init(self, func, *args, **kwargs):
     self.func = func
     self.args = args or []
     self.kwargs = kwargs or {}
+
 
   def fetch(self):
     self.data = self.func(*self.args, **self.kwargs)
@@ -24,7 +25,7 @@ class Stepper(object):
     data = yield prep
     prep_two = FakeFetcher(self.more_work, data)
     second_data = yield prep_two
-    debug("received", second_data)
+    debug("GET DATA", prep_two.get_data())
     self.data = second_data
 
   def other_work(self, arg):

@@ -5,8 +5,9 @@ class NotImplementedException(Exception):
 
 class PrepFetcher(Debuggable):
   def __init__(self, *args, **kwargs):
-    super(self, Debuggable).__init__(self, *args, **kwargs)
     self.data = None
+    if hasattr(self, 'init'):
+      self.init(*args, **kwargs)
 
   def get_cache_key(self):
     return

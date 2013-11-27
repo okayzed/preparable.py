@@ -2,7 +2,7 @@ from debuggable_class import Debuggable
 
 # The Preparable class is an abstraction around
 # parallelizing data fetches. The function
-# passed to the Preparable can fetch data in a 
+# passed to the Preparable can fetch data in a
 # way that looks linear but is parallelized and
 # asychronous under the hood.
 class Preparable(Debuggable):

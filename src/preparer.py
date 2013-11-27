@@ -8,6 +8,26 @@ from logging_pool import LoggingPool
 from debuggable_class import Debuggable
 from fetcher import PrepFetcher
 
+class PreparerTask(Debuggable):
+  __task_id = 0
+  def __init__(self, func, args=[], kwargs={}, cache_key=None):
+    PreparerTask.__task_id += 1
+    self.task_id = PreparerTask.__task_id
+    self.func = func
+    self.args = args
+    self.kwargs = kwargs
+    self.cache_key = cache_key
+    self.fetcher = None
+
+  def set_fetcher(self, fetcher):
+    self.fetcher = fetcher
+
+  def set_result(self, res):
+    if self.fetcher:
+      self.fetcher.set_data(res)
+
+    self.result = res
+
 # The Preparer runs multiple Preparables in Parallel.
 class Preparer(Debuggable):
   DEBUG=False
@@ -22,7 +42,6 @@ class Preparer(Debuggable):
     self.caching = defaultdict(list)
     self.finished_tasks = defaultdict(bool)
     self.executing = None
-    self.__task_id = 0
 
     self.in_progress = set()
     self.finished = []
@@ -54,6 +73,8 @@ class Preparer(Debuggable):
     kwargs = {}
     cache_key = None
     first_func = None
+    fetcher = None
+
     if isinstance(data, dict):
       first_func = data.get('func')
       args = data.get('args', [])
@@ -62,6 +83,7 @@ class Preparer(Debuggable):
     elif isinstance(data, PrepFetcher):
       first_func = data.fetch
       cache_key = data.get_cache_key()
+      fetcher = data
     elif callable(data):
       first_func = data
     elif isinstance(data, tuple):
@@ -79,35 +101,17 @@ class Preparer(Debuggable):
     else:
       print "Preparable function yielded a non preparable idea"
 
-    return first_func, args, kwargs, cache_key
+    task = PreparerTask(first_func, args=args, kwargs=kwargs, cache_key=cache_key)
+    if fetcher:
+      task.set_fetcher(fetcher)
+
+    return task
 
 
+  # TODO: implement this function to wait for a list of prep fetchers instead
+  # of just one
   def unpack_list(self, prepare_cycle, prep_list):
-    if isinstance(prep_list, list):
-      waits = []
-      for p in prep_list:
-        res = self.unpack(prepare_cycle, p)
-
-        waits.append(self.handle_task(prepare_cycle, res))
-
-      def wait_for(waits):
-        def waiter():
-          while True:
-            time.sleep(0.01)
-            finished = True
-            for w in waits:
-              if not w in self.finished_tasks:
-                finished = False
-
-            if finished:
-              print "FINISHED WAITING FOR", waits
-              break
-
-        return waiter
-
-      print "WAITING FOR", waits
-      return wait_for(waits)
-
+    return
 
   def init_preparable(self, preparable):
     self.debug("RUNNING PREPARABLE", preparable)
@@ -121,51 +125,40 @@ class Preparer(Debuggable):
       return
 
     res = self.unpack(prepare_cycle, data)
-    self.handle_task(prepare_cycle, res)
+    if res:
+      self.handle_task(prepare_cycle, res)
 
   def startup(self):
     self.executing = len(self.preparables)
 
-
-    # This loop has some repeated code because of
-    # the callback creation inside of it necessary
-    # for closures. Without the closures, the loop
-    # would really only execute teh same thing multiple
-    # times.
     for preparable in self.preparables:
       self.init_preparable(preparable)
 
     ret = self.spin()
     return ret
 
-  def handle_task(self, prepare_cycle, res=None):
-    self.__task_id += 1
-    task_id = self.__task_id
-
+  def handle_task(self, prepare_cycle, task):
     first_func = None
-    if res:
-      first_func, args, kwargs, cache_key = res
-    else:
-      self.finished_tasks[task_id] = True
-      return task_id
+    cache_key = task.cache_key
+    if not task:
+      raise "YOU HANDED NO TASK HERE"
 
     def make_cb(self, prepare_cycle, cache_key):
       def cb(x):
-        self.run_next_func(prepare_cycle, x, cache_key)
+        self.run_next_func(task, prepare_cycle, x, cache_key)
 
       return cb
 
     if cache_key and cache_key in self.cache:
-      self.finished_tasks[task_id] = True
-      self.run_next_func(prepare_cycle, self.cache[cache_key])
+      self.run_next_func(task, prepare_cycle, self.cache[cache_key])
     elif cache_key and cache_key in self.caching:
       self.caching[cache_key].append(prepare_cycle)
     else:
-      result = self.pool.apply_async(first_func, args, kwargs, make_cb(self, prepare_cycle, cache_key))
-      self.preparing.append(result)
+      task.async = self.pool.apply_async(task.func, task.args, task.kwargs, make_cb(self, prepare_cycle, cache_key))
+      self.preparing.append(task)
       self.caching[cache_key] = []
 
-    return task_id
+    return task
 
   def spin(self):
     start = time.time()
@@ -186,8 +179,9 @@ class Preparer(Debuggable):
       for done in self.when_done:
         done()
 
-  def run_next_func(self, prepare_cycle, result, cache_key=None):
+  def run_next_func(self, task, prepare_cycle, result, cache_key=None):
     next_func = None
+    task.set_result(result)
     if cache_key:
       self.cache[cache_key] = result
 
@@ -197,7 +191,7 @@ class Preparer(Debuggable):
 
       for cycle in cached:
         self.debug("Passing cached result to", cycle, result)
-        self.run_next_func(cycle, result)
+        self.run_next_func(task, cycle, result)
 
     res = None
     try:
@@ -226,11 +220,12 @@ class Preparer(Debuggable):
 
   def find_exceptions(self):
     next_batch = []
-    for async in self.preparing:
+    for task in self.preparing:
       try:
-        res = async.get(0);
+        res = task.async.get(0);
+        task.set_result(res)
       except multiprocessing.TimeoutError:
-        next_batch.append(async)
+        next_batch.append(task)
       except Exception, e:
         self.exceptions.append(e)
         self.success = False
