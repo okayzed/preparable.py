@@ -7,6 +7,11 @@ from logging_pool import LoggingPool
 from logging_pool import LoggingPool
 from debuggable_class import Debuggable
 from fetcher import PrepFetcher
+from preparable import Preparable
+
+class PrepResult(Debuggable):
+  def __init__(self, result):
+    self.result = result
 
 class PreparerTask(Debuggable):
   __task_id = 0
@@ -46,7 +51,14 @@ class Preparer(Debuggable):
     self.in_progress = set()
     self.finished = []
 
-  def add(self, prepare_cycle, args=[], kwargs={}):
+  def add(self, prepare_func, args=[], kwargs={}):
+    if isinstance(prepare_func, Preparable):
+      prepare_cycle = prepare_func
+    elif callable(prepare_func):
+      prepare_cycle = Preparable(prepare_func)
+    else:
+      raise "Trying to add a non-preparable to a preparer"
+
     self.debug("ADDING PREPARABLE", prepare_cycle)
 
     self.preparables.append((prepare_cycle, args, kwargs))
@@ -54,6 +66,8 @@ class Preparer(Debuggable):
     if self.executing:
       # start this thing up
       self.init_preparable(self.preparables[-1])
+
+    return prepare_cycle
 
   def run(self):
     self.debug("RUNNING", len(self.preparables), "JOBS")
@@ -64,6 +78,8 @@ class Preparer(Debuggable):
     if isinstance(data, list):
       raise Exception("Children preparables aren't implemented yet")
       self.unpack_list(prepare_cycle, data)
+    if isinstance(data, PrepResult):
+      prepare_cycle.set_result(data)
     else:
       return self.unpack_preparable(prepare_cycle, data)
 
@@ -118,15 +134,16 @@ class Preparer(Debuggable):
     prepare_cycle, args, kwargs = preparable
     data = prepare_cycle.start(*args, **kwargs)
     self.in_progress.add(prepare_cycle)
-    if not data:
+    res = self.unpack(prepare_cycle, data)
+    if res:
+      self.handle_task(prepare_cycle, res)
+
+    if not data or not res:
       self.debug("Finished Execution Early", hash(prepare_cycle))
       self.finished.append(prepare_cycle)
       self.finished_job()
       return
 
-    res = self.unpack(prepare_cycle, data)
-    if res:
-      self.handle_task(prepare_cycle, res)
 
   def startup(self):
     self.executing = len(self.preparables)

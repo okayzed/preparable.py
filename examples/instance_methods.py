@@ -1,4 +1,4 @@
-from src import Preparer, Preparable, PrepFetcher
+from src import Preparer, PrepFetcher, PrepResult
 from src import debug
 
 # This shows how an instance method can used
@@ -25,8 +25,8 @@ class Stepper(object):
     data = yield prep
     prep_two = FakeFetcher(self.more_work, data)
     second_data = yield prep_two
-    debug("GET DATA", prep_two.get_data())
     self.data = second_data
+    yield(PrepResult(second_data))
 
   def other_work(self, arg):
     return "OTHER WORK: " + str(arg)
@@ -39,9 +39,9 @@ class Stepper(object):
 if __name__ == "__main__":
   prep = Preparer()
   stepper = Stepper()
-  ret = prep.add(Preparable(stepper.work), [3])
+  ret = prep.add(stepper.work, [3])
 
   prep.run()
-
+  print ret.get_result()
   prep.print_summary()
 # }}}

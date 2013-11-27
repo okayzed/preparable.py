@@ -1,6 +1,6 @@
 import time
 
-from src import Preparer, Preparable, PrepFetcher
+from src import Preparer, PrepFetcher
 from src import debug
 
 # {{{ top level preparable functions
@@ -56,8 +56,8 @@ def multi_step_fetcher(first_arg):
 
 if __name__ == "__main__":
   prep = Preparer()
-  prep.add(Preparable(multi_step_function), [3])
-  prep.add(Preparable(multi_step_fetcher), [2])
+  prep.add(multi_step_function, [3])
+  prep.add(multi_step_fetcher, [2])
 
   prep.run()
   prep.print_summary()

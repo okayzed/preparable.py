@@ -10,6 +10,7 @@ class Preparable(Debuggable):
     self.func = multi_func
     self.cache_key = cache_key
     self.generator = None
+    self.result = None
 
   def __repr__(self):
     return "Preparable: 0x%0xf %s" % (abs(hash(self)), self.func.__name__)
@@ -43,3 +44,9 @@ class Preparable(Debuggable):
     else:
       self.debug("WHERE DID GENERATOR GO?", self)
 
+  def set_result(self, val):
+    self.result = val
+
+  def get_result(self):
+    # unpacking the result from the PrepResult (which is a shallow container)
+    return self.result.result

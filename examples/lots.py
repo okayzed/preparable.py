@@ -1,4 +1,4 @@
-from src import Preparer, Preparable
+from src import Preparer
 from src import debug
 
 # This shows how an instance method can used
@@ -24,7 +24,7 @@ class Stepper(object):
 if __name__ == "__main__":
   prep = Preparer()
   for x in xrange(100):
-    prep.add(Preparable(Stepper().work), [x])
+    prep.add(Stepper().work, [x])
 
   prep.run()
 

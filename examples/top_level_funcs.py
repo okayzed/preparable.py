@@ -1,4 +1,4 @@
-from src import Preparer, Preparable
+from src import Preparer
 from src import debug
 
 # {{{ top level functions, used by PREPARABLES
@@ -62,9 +62,9 @@ def multi_step_three():
 # {{{ MAIN
 if __name__ == "__main__":
   prep = Preparer()
-  prep.add(Preparable(multi_step_one), [3])
-  prep.add(Preparable(multi_step_two))
-  prep.add(Preparable(multi_step_three))
+  prep.add(multi_step_one, [3])
+  prep.add(multi_step_two)
+  prep.add(multi_step_three)
 
   prep.run()
 
