@@ -7,6 +7,10 @@ multi-step functions with a simple API.
 
 [ Read More About Preparables ](http://www.quora.com/Facebook-Infrastructure/What-are-preparables-and-how-are-they-implemented )
 
+## Installation
+
+    # get the latest version from pypi
+    sudo pip install Preparable
 
 ## Usage
 
