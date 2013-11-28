@@ -14,7 +14,6 @@ multi-step functions with a simple API.
 
 ## Usage
 
-
 ```python
 from preparable import Preparer, PrepFetcher, PrepResult
 import time
@@ -48,9 +47,11 @@ if __name__ == "__main__":
   print ret.get_result()
 ```
 
-See examples/ directory for more examples of how preparers are invoked
+## Examples
 
-See webservers/ directory for integration into webservers
+See the _examples/_ directory for more examples of how preparers are invoked
+
+See the _webservers/_ directory for integration into webservers
 
 ## What's implemented
 

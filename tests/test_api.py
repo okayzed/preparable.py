@@ -38,9 +38,12 @@ class SimplePreparable(object):
 class CachePreparable(object):
   def work(self):
     fetcher = CacheFetcher('bar', 'foo')
-    data = yield fetcher
+    one = yield fetcher
 
-    yield PrepResult('baz' + data)
+    second_fetcher = CacheFetcher('baz', 'a')
+    two = yield second_fetcher
+
+    yield PrepResult(str(two) + str(one))
 
 class MultiStepPreparable(object):
   def work(self):
@@ -218,6 +221,28 @@ class TestPreparerAPI(unittest.TestCase):
     self.assertEqual(self.prep.success, True)
     self.assertEqual(len(self.prep.exceptions), 0)
     self.assertEqual(len(self.prep.finished), iters)
+
+  def test_single_then_multi_cache(self):
+    bable = CachePreparable()
+    bable_ret = self.prep.add(bable.work)
+    able = MultiCachePreparable()
+    able_ret = self.prep.add(able.work)
+
+    self.prep.run()
+
+    a_val = self.prep.cache['a']
+    self.assertEqual(bable_ret.get_result(), str(a_val) + 'bar')
+
+  def test_multi_then_single(self):
+    able = MultiCachePreparable()
+    able_ret = self.prep.add(able.work)
+    bable = CachePreparable()
+    bable_ret = self.prep.add(bable.work)
+
+    self.prep.run()
+
+    a_val = self.prep.cache['a']
+    self.assertEqual(bable_ret.get_result(), str(a_val) + 'bar')
 
   def test_bad_prep(self):
     able = SimplePreparable()
