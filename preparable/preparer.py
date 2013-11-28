@@ -38,6 +38,7 @@
 #     Checks that all pending async calls are resolved
 # }}}
 
+# {{{ IMPORTS
 import time
 import itertools
 import pickle_methods
@@ -50,6 +51,9 @@ from debuggable_class import Debuggable
 from fetcher import PrepFetcher
 from preparable import Preparable
 
+# }}}
+
+# {{{ RESULT AND TASKS CLASS
 class PrepResult(Debuggable):
   def __init__(self, result):
     self.result = result
@@ -116,8 +120,9 @@ class PreparerMultiTask(PreparerTask):
 
     for cb in self.on_done:
       cb()
+# }}}
 
-
+# {{{ PREPARER
 # The Preparer runs multiple Preparables in Parallel.
 class Preparer(Debuggable):
   DEBUG=False
@@ -149,9 +154,6 @@ class Preparer(Debuggable):
 
     for preparable in self.preparables:
       self.init_preparable(preparable)
-
-    ret = self.spin()
-    return ret
 
   def add(self, prepare_func, args=[], kwargs={}):
     if isinstance(prepare_func, Preparable):
@@ -292,6 +294,9 @@ class Preparer(Debuggable):
     multitask = PreparerMultiTask()
     multitask.set_cache(self.cache)
 
+    # i kind of want to put this logic in MultiTask, but...
+    # the Preparer looks like it wants some of the info that
+    # is being generated here, too.
     for task in tasks:
       cache_key = task.get_cache_key()
       if cache_key and cache_key in self.cache:
@@ -398,8 +403,9 @@ class Preparer(Debuggable):
         self.finished_job()
 
     self.preparing = next_batch
+# }}}
 
-# {{{ Exceptions
+# {{{ EXCEPTIONS
 class ShenanigansException(Exception):
   pass
 class MissingTaskException(Exception):
@@ -407,3 +413,5 @@ class MissingTaskException(Exception):
 class NonPreparableException(Exception):
   pass
 # }}}
+
+# vim: set foldmethod=marker
