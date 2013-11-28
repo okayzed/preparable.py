@@ -1,5 +1,5 @@
-from src import Preparer
-from src import debug
+from preparable import Preparer
+from preparable import debug
 
 # {{{ top level functions, used by PREPARABLES
 def f(x):

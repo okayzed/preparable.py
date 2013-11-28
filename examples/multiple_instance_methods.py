@@ -1,5 +1,5 @@
-from src import Preparer
-from src import debug
+from preparable import Preparer
+from preparable import debug
 
 # This shows how an instance method can used
 # in conjunction with changing instance variables

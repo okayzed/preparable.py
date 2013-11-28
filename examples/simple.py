@@ -1,7 +1,7 @@
 import time
 
-from src import Preparer, PrepFetcher
-from src import debug
+from preparable import Preparer, PrepFetcher
+from preparable import debug
 
 # {{{ top level preparable functions
 def f(x):
