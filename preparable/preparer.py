@@ -1,3 +1,43 @@
+# The highlevel:
+# Things: Preparables, PrepResults, PrepFetchers, Preparer
+# What it provides:
+#   Parallelized Data Fetches
+#   Cached Values shared across Data Fetchers
+#   Simple (relatively)  API
+
+# {{{ DETAILED INFO
+# HOW IT WORKS
+#   The preparer has a main loop that runs until its Prepare Queue has finished.
+#   When the preparer is given Preparables to run, they are added to the Prepare Queue
+#   When a Preparable yields a PrepFetcher, the Preparer creates a Task that it adds to its Task Queue
+#   When a Preparable yields multiple PrepFetchers, the Preparer creates a MultiTask that it adds to its Task Queue
+#       MultiTasks contain multiple sub Tasks that they are responsible for coordinating
+#   When a Preparable yields a PrepResult, the Preparable is considered finished and is removed from the Prepare Queue
+
+# HOW THE PREPARER COORDINATES
+# SCHEDULING SINGLE TASKS
+#   When its time to run a task, the Preparer checks for its cache key
+#     If the cache key does not exist,
+#       the Preparer creates a pending queue for that cache key
+#       the Preparer fetches the data for the cache key in an async function
+#       when this function comes back, the Preparer caches the result and sends the data back to the Preparable
+#       for each waiting task in the pending queue, the task is given the result and resolved
+#     If the cache key exists:
+#       the Preparer sends the data to the Preparable immediately
+#     If there is a pending queue for that cache key:
+#       the Preparer places the task and Preparable in that queue
+
+# SCHEDULING MULTITASKS
+#   When a multi task is scheduled, the Preparer determines which cache keys are missing or pending.
+#     For missing cache keys, a pending queue is created and the fetcher is added to a list of tasks to run.
+#     For pending cache keys, the MultiTask is given the task and cache key
+#   The list of tasks to run are scheduled as a parallel async job.
+#   When the results come back, the cache keys are propagated
+#   When the multi task is queried for its finished state, it:
+#     Checks that all pending cache keys are resolved
+#     Checks that all pending async calls are resolved
+# }}}
+
 import time
 import itertools
 import pickle_methods
@@ -15,12 +55,9 @@ class PrepResult(Debuggable):
     self.result = result
 
 # The PreparerTask is used by Preparer to keep track of running tasks that it
-# needs to wait on. A PreparerTask is used for single Preparables yielded
+# needs to wait on. A PreparerTask is used when single Preparables are yielded.
 class PreparerTask(Debuggable):
-  __task_id = 0
   def __init__(self, func=None, args=[], kwargs={}, cache_key=None):
-    PreparerTask.__task_id += 1
-    self.task_id = PreparerTask.__task_id
     self.func = func
     self.args = args
     self.kwargs = kwargs
@@ -67,6 +104,7 @@ class PreparerMultiTask(PreparerTask):
   def add_async(self, async):
     self.__async.append(async)
 
+  # Checks to see if all pending sub tasks are finished
   def get(self, timeout=0):
     for key, task in self.pending_cache:
       if key not in self.cache:
@@ -97,12 +135,15 @@ class Preparer(Debuggable):
     self.in_progress = set()
     self.finished = []
 
+  # Initializes a Preparable and adds it to the Prepare queue
+  # Calls the preparable once and handles the yielded value
   def init_preparable(self, preparable):
     prepare_cycle, args, kwargs = preparable
     data = prepare_cycle.start(*args, **kwargs)
     self.in_progress.add(prepare_cycle)
     self.unpack_and_handle(prepare_cycle, data)
 
+  # Start all preparables
   def startup(self):
     self.executing = len(self.preparables)
 
@@ -118,7 +159,7 @@ class Preparer(Debuggable):
     elif callable(prepare_func):
       prepare_cycle = Preparable(prepare_func)
     else:
-      raise Exception("Trying to add a non-preparable to a preparer")
+      raise NonPreparableException()
 
     self.preparables.append((prepare_cycle, args, kwargs))
 
@@ -128,10 +169,15 @@ class Preparer(Debuggable):
 
     return prepare_cycle
 
+  # Entry point from the outside.
   def run(self):
     self.startup()
     self.spin()
 
+  # called on the value Preparables yield.
+  # figures out if the Preparable is finished.
+  # figures out if a Task or MultiTask needs to be created
+  # and starts Preparing it.
   def unpack_and_handle(self, prepare_cycle, data):
     if isinstance(data, PrepResult):
       prepare_cycle.set_result(data)
@@ -149,7 +195,7 @@ class Preparer(Debuggable):
     self.finished_job()
 
 
-
+  # create a Task for a Preparable
   def unpack_preparable(self, prepare_cycle, data):
     args = []
     kwargs = {}
@@ -190,10 +236,13 @@ class Preparer(Debuggable):
     return task
 
 
+  # create a MultiTask for a preparable
   def unpack_list(self, prepare_cycle, prep_list):
     # TODO: validate prep_list is only preparables
     return self.handle_multi_task(prepare_cycle, prep_list)
 
+
+  # propagate cache key results to pending Tasks.
   def rinse_cache(self, cache_key):
     if cache_key in self.caching:
       cached = self.caching[cache_key]
@@ -203,7 +252,7 @@ class Preparer(Debuggable):
           self.debug("Passing cached result to", cycle, result)
           self.run_next_func(sub_task, cycle, result)
         else:
-          raise Exception("What type of shenanigans is this")
+          raise ShenanigansException()
 
 
   # handle task takes a PreparerTask and a Preparable and queues them up for
@@ -212,7 +261,7 @@ class Preparer(Debuggable):
     first_func = None
     cache_key = task.cache_key
     if not task:
-      raise "YOU HANDED NO TASK HERE"
+      raise MissingTaskException()
 
     def make_cb(self, prepare_cycle, cache_key):
       def cb(x):
@@ -231,7 +280,13 @@ class Preparer(Debuggable):
 
     return task
 
-  # Takes a list of tasks and queues them up to run
+  # Takes a list of tasks, creates a MultiTask and figures out
+  # which tasks are resolved, which need to be run and which
+  # are pending cache keys.
+
+  # Gives the MultiTask the list of cache_keys that are pending
+  # Gives the MultiTask the async job that is spawned
+  # Tells the Preparer to wait for the MultiTask to resolve
   def handle_multi_task(self, prepare_cycle, tasks):
     to_prepare = []
     multitask = PreparerMultiTask()
@@ -276,11 +331,12 @@ class Preparer(Debuggable):
 
     return multitask
 
+  # This is the main loop for the preparer. It does a sleep spin
   def spin(self):
     start = time.time()
     while True:
       time.sleep(0.01)
-      self.find_exceptions()
+      self.finish_tasks()
       delta = time.time() - start
       if self.done or not self.preparing:
         break
@@ -294,6 +350,11 @@ class Preparer(Debuggable):
       for done in self.when_done:
         done()
 
+  # this is the async re-entry point for continuing the preparation of
+  # Preparables. it coordinates with the Preparable, handing it the results
+  # that are coming from the cache or fetcher (via the generator.send()) and
+  # handles the next yielded value. (May be a result, may be a preparable, may
+  # be many)
   def run_next_func(self, task, prepare_cycle, result, cache_key=None):
     task.set_result(result)
     if cache_key:
@@ -321,7 +382,8 @@ class Preparer(Debuggable):
     if self.exceptions:
       print "Exceptions", self.exceptions
 
-  def find_exceptions(self):
+  # Check to see if all tasks are finished
+  def finish_tasks(self):
     next_batch = []
     for task in self.preparing:
       try:
@@ -336,3 +398,12 @@ class Preparer(Debuggable):
         self.finished_job()
 
     self.preparing = next_batch
+
+# {{{ Exceptions
+class ShenanigansException(Exception):
+  pass
+class MissingTaskException(Exception):
+  pass
+class NonPreparableException(Exception):
+  pass
+# }}}
