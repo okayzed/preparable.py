@@ -2,7 +2,7 @@ import sys
 sys.path.append('..')
 
 from flask import Flask
-from src import Preparer, PrepFetcher, PrepResult
+from preparable import Preparer, PrepFetcher, PrepResult
 
 app = Flask(__name__)
 
