@@ -1,6 +1,8 @@
-import unittest
 import sys
 sys.path.append('..')
+
+import unittest
+import random
 
 from preparable import Preparer, Preparable, PrepFetcher, PrepResult
 
@@ -48,16 +50,45 @@ class MultiStepPreparable(object):
 
     yield PrepResult(data_two)
 
-class MultiDispatchPreparable(object):
+class MultiCachePreparable(object):
   def work(self):
-    a = SimpleFetcher(10)
-    b = SimpleFetcher(20)
-    c = SimpleFetcher(30)
-    d = SimpleFetcher(40)
+    order = [10, 20, 30, 40]
+    random.shuffle(order)
+    a = CacheFetcher(order[0], 'a')
+    b = CacheFetcher(order[1], 'b')
+    c = CacheFetcher(order[2], 'c')
+    d = CacheFetcher(order[3], 'd')
 
     results = yield [a, b, c, d]
 
-    yield PrepResult(results)
+    yield PrepResult((order, results))
+
+class MultiCacheStepPreparable(object):
+  def work(self):
+    order = [10, 20, 30, 40]
+    random.shuffle(order)
+    a = CacheFetcher(order[0], 'a')
+    b = CacheFetcher(order[1], 'b')
+    c = CacheFetcher(order[2], 'c')
+    d = CacheFetcher(order[3], 'd')
+
+    results_one = yield [a, b]
+    results_two = yield [c, d]
+
+    yield PrepResult((results_one, results_two))
+
+class MultiDispatchPreparable(object):
+  def work(self):
+    order = [10, 20, 30, 40]
+    random.shuffle(order)
+    a = SimpleFetcher(order[0])
+    b = SimpleFetcher(order[1])
+    c = SimpleFetcher(order[2])
+    d = SimpleFetcher(order[3])
+
+    results = yield [a, b, c, d]
+
+    yield PrepResult((order, results))
 # }}}
 
 # {{{ TESTS
@@ -91,24 +122,30 @@ class TestPreparerAPI(unittest.TestCase):
     ret = self.prep.add(able.work)
     self.prep.run()
 
-    self.assertEqual(ret.get_result(), [10, 20, 30, 40])
+    results, order = ret.get_result()
+    self.assertEqual(results, order)
     self.assertEqual(self.prep.success, True)
     self.assertEqual(len(self.prep.exceptions), 0)
     self.assertEqual(len(self.prep.finished), 1)
 
   def test_several_preps(self):
     results = []
-    for i in xrange(30):
+    iters = 40
+    for i in xrange(iters):
       able = MultiDispatchPreparable()
       ret = self.prep.add(able.work)
       results.append(ret)
 
     self.prep.run()
     found_results = map(lambda r: r.get_result(), results)
-    self.assertEqual(len(found_results), 30)
+    self.assertEqual(len(found_results), iters)
+    for result in results:
+      results, order = result.get_result()
+      self.assertEqual(results, order)
+
     self.assertEqual(self.prep.success, True)
     self.assertEqual(len(self.prep.exceptions), 0)
-    self.assertEqual(len(self.prep.finished), 30)
+    self.assertEqual(len(self.prep.finished), iters)
 
   def test_cache(self):
     able = CachePreparable()
@@ -120,6 +157,70 @@ class TestPreparerAPI(unittest.TestCase):
     self.assertEqual(self.prep.success, True)
     self.assertEqual(len(self.prep.exceptions), 0)
     self.assertEqual(len(self.prep.finished), 1)
+
+  def test_multi_cache(self):
+    able = MultiCachePreparable()
+    ret = self.prep.add(able.work)
+    self.prep.run()
+
+    results, order = ret.get_result()
+
+    self.assertEqual(results, order)
+    self.assertTrue('a' in self.prep.cache)
+    self.assertTrue('b' in self.prep.cache)
+    self.assertTrue('c' in self.prep.cache)
+    self.assertTrue('d' in self.prep.cache)
+
+    self.assertEqual(self.prep.success, True)
+    self.assertEqual(len(self.prep.exceptions), 0)
+    self.assertEqual(len(self.prep.finished), 1)
+
+  def test_multi_cache_step(self):
+    able = MultiCacheStepPreparable()
+    ret = self.prep.add(able.work)
+    self.prep.run()
+
+    res1, res2 = ret.get_result()
+
+    self.assertNotEqual(res1, res2)
+    self.assertTrue('a' in self.prep.cache)
+    self.assertTrue('b' in self.prep.cache)
+    self.assertTrue('c' in self.prep.cache)
+    self.assertTrue('d' in self.prep.cache)
+
+    self.assertEqual(self.prep.cache['a'], res1[0])
+    self.assertEqual(self.prep.cache['b'], res1[1])
+    self.assertEqual(self.prep.cache['c'], res2[0])
+    self.assertEqual(self.prep.cache['d'], res2[1])
+
+    self.assertEqual(self.prep.success, True)
+    self.assertEqual(len(self.prep.exceptions), 0)
+    self.assertEqual(len(self.prep.finished), 1)
+
+  def test_multi_cache_many(self):
+    iters = 30
+    results = []
+    for i in xrange(iters):
+      able = MultiCachePreparable()
+      results.append(self.prep.add(able.work))
+
+    self.prep.run()
+
+    self.assertTrue('a' in self.prep.cache)
+    self.assertTrue('b' in self.prep.cache)
+    self.assertTrue('c' in self.prep.cache)
+    self.assertTrue('d' in self.prep.cache)
+
+    res0 = results[0].get_result()[1]
+    for result in results:
+        self.assertEqual(res0, result.get_result()[1])
+
+    # TODO: ADD TEST TO MAKE SURE ALL RESULTS LOOK THE SAME 
+    # (if caching works correctly, they should, i believe)
+    self.assertEqual(self.prep.success, True)
+    self.assertEqual(len(self.prep.exceptions), 0)
+    self.assertEqual(len(self.prep.finished), iters)
+
 
 
 

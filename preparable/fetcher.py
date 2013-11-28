@@ -5,7 +5,7 @@ class NotImplementedException(Exception):
 
 class PrepFetcher(Debuggable):
   def __init__(self, *args, **kwargs):
-    self.data = None
+    self.result = None
     if hasattr(self, 'init'):
       self.init(*args, **kwargs)
 
@@ -15,8 +15,8 @@ class PrepFetcher(Debuggable):
   def fetch(self):
     raise NotImplementedException()
 
-  def get_data(self):
-    return self.data
+  def get_result(self):
+    return self.result
 
-  def set_data(self, data):
-    self.data = data
+  def set_result(self, data):
+    self.result = data

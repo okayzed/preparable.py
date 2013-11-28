@@ -30,16 +30,44 @@ class PreparerTask(Debuggable):
 
   def set_result(self, res):
     if self.fetcher:
-      self.fetcher.set_data(res)
+      self.fetcher.set_result(res)
 
     self.result = res
+
 
 class PreparerMultiTask(PreparerTask):
   def __init__(self, *args, **kwargs):
     super(PreparerMultiTask, self).__init__(*args, **kwargs)
+    self.async = self # tricksy
+    self.__async = None
+    self.on_done = None
+    self.pending_cache = []
 
-  def finish(self, value):
-    self.set_result(value)
+  def wait_for_cache(self, key, task):
+    self.pending_cache.append((key, task))
+
+  def set_cache(self, cache):
+    self.cache = cache
+
+  def when_done(self, func):
+    self.on_done = func
+
+  def set_async(self, async):
+    self.__async = async
+
+  def get(self, timeout=0):
+    for key, task in self.pending_cache:
+      if key not in self.cache:
+        raise multiprocessing.TimeoutError()
+      task.set_result(self.cache[key])
+
+    if self.__async:
+      self.__async.get(0)
+      self.__async = None
+
+    if self.on_done:
+      self.on_done()
+
 
 # The Preparer runs multiple Preparables in Parallel.
 def handle_sub_task(sub_task):
@@ -58,6 +86,7 @@ class Preparer(Debuggable):
     self.cache = {}
     self.caching = defaultdict(list)
     self.executing = None
+    self.lock = multiprocessing.Lock()
 
     self.in_progress = set()
     self.finished = []
@@ -70,8 +99,6 @@ class Preparer(Debuggable):
     else:
       raise "Trying to add a non-preparable to a preparer"
 
-    self.debug("ADDING PREPARABLE", prepare_cycle)
-
     self.preparables.append((prepare_cycle, args, kwargs))
 
     if self.executing:
@@ -81,7 +108,6 @@ class Preparer(Debuggable):
     return prepare_cycle
 
   def run(self):
-    self.debug("RUNNING", len(self.preparables), "JOBS")
     self.startup()
     self.spin()
 
@@ -98,7 +124,6 @@ class Preparer(Debuggable):
         return self.handle_task(prepare_cycle, task)
 
 
-    self.debug("Finished Execution", prepare_cycle)
     self.finished.append(prepare_cycle)
     self.in_progress.remove(prepare_cycle)
     self.finished_job()
@@ -150,7 +175,6 @@ class Preparer(Debuggable):
     return self.handle_multi_task(prepare_cycle, prep_list)
 
   def init_preparable(self, preparable):
-    self.debug("RUNNING PREPARABLE", preparable)
     prepare_cycle, args, kwargs = preparable
     data = prepare_cycle.start(*args, **kwargs)
     self.in_progress.add(prepare_cycle)
@@ -178,6 +202,7 @@ class Preparer(Debuggable):
 
       return cb
 
+    self.lock.acquire()
     if cache_key and cache_key in self.cache:
       self.run_next_func(task, prepare_cycle, self.cache[cache_key])
     elif cache_key and cache_key in self.caching:
@@ -186,42 +211,53 @@ class Preparer(Debuggable):
       task.async = self.pool.apply_async(task.func, task.args, task.kwargs, make_cb(self, prepare_cycle, cache_key))
       self.preparing.append(task)
       self.caching[cache_key] = []
+    self.lock.release()
 
     return task
 
   def handle_multi_task(self, prepare_cycle, tasks):
     to_prepare = []
-    cached_results = []
+    multitask = PreparerMultiTask()
+    multitask.set_cache(self.cache)
+
     for task in tasks:
       cache_key = task.get_cache_key()
+      self.lock.acquire()
       if cache_key and cache_key in self.cache:
         task.set_result(self.cache[cache_key])
-        cached_results.append(self.cache[cache_key])
-
       elif cache_key and cache_key in self.caching:
-        # FOR NOW, LETS JUST IGNORE THIS PROBLEM
-        self.debug("Ignoring caching fetch in multi-prep, doing a redundant fetch")
-        to_prepare.append(task)
+        multitask.wait_for_cache(cache_key, task)
       else:
+        self.caching[cache_key] = []
         to_prepare.append(task)
+      self.lock.release()
 
     self.executing += 1
-    task = PreparerMultiTask()
-    def make_cb(self, prepare_cycle, tasks):
-      def cb(results):
+
+    def update_cache(results):
+      if results:
         for i, value in enumerate(results):
-          tasks[i].set_data(value)
+          to_prepare[i].set_result(value)
 
+      for task in tasks:
+        result = task.get_result()
+        cache_key = task.get_cache_key()
+
+        if result and not cache_key in self.cache:
+          self.cache[cache_key] = result
+
+    def make_cb(self, prepare_cycle, tasks):
+      def cb():
         self.finished_job()
-
-        self.run_next_func(task, prepare_cycle, map(lambda t: t.get_data(), tasks))
+        self.run_next_func(task, prepare_cycle, map(lambda t: t.get_result(), tasks))
       return cb
 
-    self.preparing.append(task)
-    task.async = self.pool.map_async(handle_sub_task, to_prepare, callback=make_cb(self, prepare_cycle, tasks))
+    self.preparing.append(multitask)
+    multitask.when_done(make_cb(self, prepare_cycle,tasks))
+    if len(to_prepare):
+      multitask.set_async(self.pool.map_async(handle_sub_task, to_prepare, callback=update_cache))
 
-
-    return task
+    return multitask
 
   def spin(self):
     start = time.time()
@@ -235,7 +271,6 @@ class Preparer(Debuggable):
   def finished_job(self):
     self.executing -= 1
     if self.executing == 0 or not self.preparing:
-      self.debug('ALL DONE')
       if not len(self.exceptions):
         self.success = True
       self.done = True
@@ -247,16 +282,19 @@ class Preparer(Debuggable):
     if cache_key:
       self.cache[cache_key] = result
 
+    cached = []
+    self.lock.acquire()
     if cache_key in self.caching:
       cached = self.caching[cache_key]
       del self.caching[cache_key]
+    self.lock.release()
 
-      for cycle in cached:
-        if isinstance(cycle, Preparable):
-          self.debug("Passing cached result to", cycle, result)
-          self.run_next_func(task, cycle, result)
-        if isinstance(cycle, PreparerMultiTask):
-          self.run_next_func(task, cycle, result)
+    for cycle in cached:
+      if isinstance(cycle, Preparable):
+        self.debug("Passing cached result to", cycle, result)
+        self.run_next_func(task, cycle, result)
+      if isinstance(cycle, PreparerMultiTask):
+        self.run_next_func(task, cycle, result)
 
     try:
       data = prepare_cycle.do_work(result)
@@ -277,8 +315,9 @@ class Preparer(Debuggable):
     next_batch = []
     for task in self.preparing:
       try:
-        res = task.async.get(0);
-        task.set_result(res)
+        if task.async:
+          res = task.async.get(0);
+          task.set_result(res)
       except multiprocessing.TimeoutError:
         next_batch.append(task)
       except Exception, e:
