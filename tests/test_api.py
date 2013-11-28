@@ -215,14 +215,9 @@ class TestPreparerAPI(unittest.TestCase):
     for result in results:
         self.assertEqual(res0, result.get_result()[1])
 
-    # TODO: ADD TEST TO MAKE SURE ALL RESULTS LOOK THE SAME 
-    # (if caching works correctly, they should, i believe)
     self.assertEqual(self.prep.success, True)
     self.assertEqual(len(self.prep.exceptions), 0)
     self.assertEqual(len(self.prep.finished), iters)
-
-
-
 
   def test_bad_prep(self):
     able = SimplePreparable()
@@ -233,18 +228,6 @@ class TestPreparerAPI(unittest.TestCase):
       error = True
 
     self.assertEqual(error, True)
-
-class TestFetcherAPI(unittest.TestCase):
-  def setUp(self):
-    pass
-
-class TestPreparableAPI(unittest.TestCase):
-  def setUp(self):
-    pass
-
-  def test_shuffle(self):
-    pass
-
 
 # }}}
 if __name__ == "__main__":
