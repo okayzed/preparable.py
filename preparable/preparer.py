@@ -214,7 +214,7 @@ class Preparer(Debuggable):
 
         self.finished_job()
 
-        self.run_next_func(task, prepare_cycle, itertools.chain(cached_results, results))
+        self.run_next_func(task, prepare_cycle, map(lambda t: t.get_data(), tasks))
       return cb
 
     self.preparing.append(task)
