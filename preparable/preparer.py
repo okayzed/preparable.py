@@ -1,4 +1,5 @@
 import time
+import itertools
 import pickle_methods
 import multiprocessing
 from collections import defaultdict
@@ -190,10 +191,13 @@ class Preparer(Debuggable):
 
   def handle_multi_task(self, prepare_cycle, tasks):
     to_prepare = []
+    cached_results = []
     for task in tasks:
       cache_key = task.get_cache_key()
       if cache_key and cache_key in self.cache:
         task.set_result(self.cache[cache_key])
+        cached_results.append(self.cache[cache_key])
+
       elif cache_key and cache_key in self.caching:
         # FOR NOW, LETS JUST IGNORE THIS PROBLEM
         self.debug("Ignoring caching fetch in multi-prep, doing a redundant fetch")
@@ -210,7 +214,7 @@ class Preparer(Debuggable):
 
         self.finished_job()
 
-        self.run_next_func(task, prepare_cycle, results)
+        self.run_next_func(task, prepare_cycle, itertools.chain(cached_results, results))
       return cb
 
     self.preparing.append(task)
@@ -283,4 +287,3 @@ class Preparer(Debuggable):
         self.finished_job()
 
     self.preparing = next_batch
-
