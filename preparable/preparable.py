@@ -47,4 +47,5 @@ class Preparable(Debuggable):
 
   def get_result(self):
     # unpacking the result from the PrepResult (which is a shallow container)
-    return self.result.result
+    if self.result:
+      return self.result.result
