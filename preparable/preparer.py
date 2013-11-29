@@ -60,6 +60,9 @@ class PrepResult(Debuggable):
 
 # The PreparerTask is used by Preparer to keep track of running tasks that it
 # needs to wait on. A PreparerTask is used when single Preparables are yielded.
+
+# The PreparerTask is meant to be mostly logicless - it defers to the Preparer,
+# it just lets the Preparer know if it is finished or not.
 class PreparerTask(Debuggable):
   def __init__(self, func=None, args=[], kwargs={}, cache_key=None):
     self.func = func
@@ -90,6 +93,8 @@ def handle_sub_task(sub_task):
 # It is responsible for watching any async calls used to fetch data for
 # subtasks, as well as waiting for the cache to get filled for sub tasks that
 # have a key pending.
+# The PreparerMultiTask is meant to be mostly logicless, too
+# (and defers to the Preparer)
 class PreparerMultiTask(PreparerTask):
   def __init__(self, *args, **kwargs):
     super(PreparerMultiTask, self).__init__(*args, **kwargs)
