@@ -252,9 +252,12 @@ class Preparer(Debuggable):
 
 
   # propagate cache key results to pending Tasks.
-  def propagate_cache_key(self, cache_key):
-    if cache_key in self.caching:
-      cached = self.caching[cache_key]
+  def propagate_cache_key(self, cache_key, cached=None):
+    if not cached:
+      if cache_key in self.caching:
+        cached = self.caching[cache_key]
+
+    if cached:
       result = self.cache[cache_key]
       for sub_task, cycle in cached:
         if isinstance(cycle, Preparable):
@@ -371,13 +374,7 @@ class Preparer(Debuggable):
     task.set_result(result)
     if cache_key:
       self.cache[cache_key] = result
-
-    cached = []
-    if cache_key in self.caching:
-      cached = self.caching[cache_key]
-      del self.caching[cache_key]
-
-    self.propagate_cache_key(cache_key)
+      self.propagate_cache_key(cache_key)
 
     try:
       data = prepare_cycle.do_work(result)

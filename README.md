@@ -33,6 +33,9 @@ class PersonFetcher(PrepFetcher):
     # in real code, this would be a synchronous DB call
     return Person(self.id, self.friends)
 
+  def get_cache_key(self):
+    return self.id
+
 def friend_loader(data):
   person = yield PersonFetcher(data.id, data.friends) # should take 0.1s total
   friends = yield [ PersonFetcher(f) for f in person.friends ] # should take 0.1s total
