@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 # Pulled from somewhere
 import traceback
 import multiprocessing

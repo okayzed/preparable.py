@@ -134,13 +134,13 @@ class TestPreparerAPI(unittest.TestCase):
   def test_several_preps(self):
     results = []
     iters = 40
-    for i in xrange(iters):
+    for i in range(iters):
       able = MultiDispatchPreparable()
       ret = self.prep.add(able.work)
       results.append(ret)
 
     self.prep.run()
-    found_results = map(lambda r: r.get_result(), results)
+    found_results = [r.get_result() for r in results]
     self.assertEqual(len(found_results), iters)
     for result in results:
       results, order = result.get_result()
@@ -203,7 +203,7 @@ class TestPreparerAPI(unittest.TestCase):
   def test_multi_cache_many(self):
     iters = 30
     results = []
-    for i in xrange(iters):
+    for i in range(iters):
       able = MultiCachePreparable()
       results.append(self.prep.add(able.work))
 

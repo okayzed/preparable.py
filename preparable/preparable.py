@@ -1,4 +1,6 @@
-from debuggable_class import Debuggable
+from __future__ import print_function
+
+from .debuggable_class import Debuggable
 
 # The Preparable class is an abstraction around parallelizing data fetches. The
 # function passed to the Preparable can fetch data in a way that looks linear
@@ -17,10 +19,10 @@ class Preparable(Debuggable):
     generator = self.func(*args, **kwargs)
     if generator:
       try:
-        next_func = generator.next()
+        next_func = next(generator)
       except StopIteration:
         pass
-      except Exception, e:
+      except Exception as e:
         self.debug("ERROR WHILE RUNNING FETCHER", e)
         generator.throw(e)
 
@@ -31,9 +33,9 @@ class Preparable(Debuggable):
     if self.generator:
       try:
         next_func = self.generator.send(data)
-      except StopIteration, e:
+      except StopIteration as e:
         raise e
-      except Exception, e:
+      except Exception as e:
         self.debug("ERROR WHILE RUNNING FETCHER", e)
         self.generator.throw(e)
         return

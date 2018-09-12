@@ -30,4 +30,4 @@ if __name__ == "__main__":
   ret = prep.add(friend_loader, [Person(10, [5, 4, 39, 22])])
   prep.run()
 
-  print ret.get_result()
+  print(ret.get_result())

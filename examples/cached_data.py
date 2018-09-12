@@ -76,7 +76,7 @@ class MultiDispatchPreparable(object):
 # }}}
 
 if __name__ == "__main__":
-  print "PREPARING"
+  print("PREPARING")
   p = Preparer()
   able = MultiCachePreparable()
   bable = MultiCacheStepPreparable()
@@ -88,4 +88,4 @@ if __name__ == "__main__":
   p.run()
 
   p.print_summary()
-  print p.cache
+  print(p.cache)

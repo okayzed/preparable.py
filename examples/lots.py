@@ -23,7 +23,7 @@ class Stepper(object):
 # {{{ MAIN
 if __name__ == "__main__":
   prep = Preparer()
-  for x in xrange(100):
+  for x in range(100):
     prep.add(Stepper().work, [x])
 
   prep.run()

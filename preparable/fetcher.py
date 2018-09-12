@@ -1,4 +1,6 @@
-from debuggable_class import Debuggable
+from __future__ import print_function
+
+from .debuggable_class import Debuggable
 
 class NotImplementedException(Exception):
   pass

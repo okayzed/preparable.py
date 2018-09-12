@@ -45,7 +45,7 @@ if __name__ == "__main__":
   ret = prep.add(stepper.work, [3])
 
   prep.run()
-  print ret.get_result()
+  print(ret.get_result())
 
   prep.print_summary()
 # }}}

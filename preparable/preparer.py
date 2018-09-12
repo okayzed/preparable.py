@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 # The highlevel:
 # Things: Preparables, PrepResults, PrepFetchers, Preparer
 # What it provides:
@@ -41,15 +43,15 @@
 # {{{ IMPORTS
 import time
 import itertools
-import pickle_methods
+from . import pickle_methods
 import multiprocessing
 from collections import defaultdict
 
-from logging_pool import LoggingPool
-from logging_pool import LoggingPool
-from debuggable_class import Debuggable
-from fetcher import PrepFetcher
-from preparable import Preparable
+from .logging_pool import LoggingPool
+from .logging_pool import LoggingPool
+from .debuggable_class import Debuggable
+from .fetcher import PrepFetcher
+from .preparable import Preparable
 
 # }}}
 
@@ -236,7 +238,7 @@ class Preparer(Debuggable):
       if len(data) > 3:
         cache_key = data[3]
     else:
-      print "Preparable function yielded a non preparable idea"
+      print("Preparable function yielded a non preparable idea")
 
     task = PreparerTask(first_func, args=args, kwargs=kwargs, cache_key=cache_key)
     if fetcher:
@@ -336,7 +338,7 @@ class Preparer(Debuggable):
     def make_cb(self, prepare_cycle, tasks):
       def cb():
         self.finished_job()
-        self.resume_preparable(task, prepare_cycle, map(lambda t: t.get_result(), tasks))
+        self.resume_preparable(task, prepare_cycle, [t.get_result() for t in tasks])
       return cb
 
     self.preparing.append(multitask)
@@ -383,13 +385,13 @@ class Preparer(Debuggable):
       self.unpack_and_handle(prepare_cycle, None)
 
   def print_summary(self):
-    print "------------------------"
-    print "Finished preparing data!"
-    print "Cached data:", self.cache
-    print "Errors: ", len(self.exceptions)
-    print "Preparables run", len(self.finished)
+    print("------------------------")
+    print("Finished preparing data!")
+    print("Cached data:", self.cache)
+    print("Errors: ", len(self.exceptions))
+    print("Preparables run", len(self.finished))
     if self.exceptions:
-      print "Exceptions", self.exceptions
+      print("Exceptions", self.exceptions)
 
   # Check to see if all tasks are finished
   def finish_tasks(self):
@@ -401,7 +403,7 @@ class Preparer(Debuggable):
           task.set_result(res)
       except multiprocessing.TimeoutError:
         next_batch.append(task)
-      except Exception, e:
+      except Exception as e:
         self.exceptions.append(e)
         self.success = False
         self.finished_job()
