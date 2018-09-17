@@ -19,7 +19,11 @@ def _unpickle_method(func_name, obj, cls):
       break
   return func.__get__(obj, cls)
 
-import copyreg
+try:
+    import copyreg
+except:
+    import copy_reg as copyreg
+
 import types
 copyreg.pickle(types.MethodType, _pickle_method, _unpickle_method)
 
