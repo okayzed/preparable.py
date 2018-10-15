@@ -149,6 +149,12 @@ class Preparer(Debuggable):
     self.in_progress = set()
     self.finished = []
 
+  def __del__(self):
+    try:
+      self.pool.close()
+    except:
+      pass
+
   # Initializes a Preparable and adds it to the Prepare queue
   # Calls the preparable once and handles the yielded value
   def init_preparable(self, preparable):

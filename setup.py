@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name='Preparable',
-    version='0.1.1',
+    version='0.1.2',
     author='okay',
     author_email='okay.zed+pp@gmail.com',
     packages=['preparable' ],
